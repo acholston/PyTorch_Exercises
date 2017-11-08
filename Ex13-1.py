@@ -73,6 +73,8 @@ class DecoderRNN(nn.Module):
 	self.U = nn.Linear(hidden_size*2, hidden_size)
 	self.W = nn.Linear(hidden_size, hidden_size)
 
+	self.v = nn.Linear(hidden_size, 1)
+
 	#Conversion of inputs to RNN
 	self.Uc = nn.Linear(hidden_size*2, hidden_size)
 	self.Wy = nn.Linear(hidden_size, hidden_size)
@@ -99,11 +101,13 @@ class DecoderRNN(nn.Module):
 	energy = energy.view(self.hidden_size, -1)
 	
 	#Get alpha
-	alpha = F.softmax(energy)
-	alpha = alpha.transpose(0, 1).contiguous()
+	alpha = energy.transpose(0, 1).contiguous()
+	alpha = self.v(alpha)
+	alpha = F.softmax(alpha)
+
 	for i in range(self.sequence_length):
 	    #multiply - output 1x2*n (add for each sequence value)
-	    temp = torch.mul(alpha[i].view(1, self.hidden_size), h[i].view(-1, self.hidden_size))
+	    temp = torch.mul(alpha[i].view(-1), h[i].view(-1))
 	    c += temp.view(self.hidden_size*2)
 
 	return c
