@@ -92,7 +92,9 @@ class Resnet(nn.Module):
 	self.layers = layers
 
 	#Initial convolution
-	self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=1)
+
+	#Stride changed for mnist - original resnet stride=2
+	self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=1)
 	self.b_norm1 = nn.BatchNorm2d(64)
 	self.mp1 = nn.MaxPool2d(2)
 
@@ -130,7 +132,9 @@ class Resnet(nn.Module):
     def forward(self, x):
 	x = self.conv1(x)
 	x = F.relu(self.b_norm1(x))
-	x = self.mp1(x)
+	
+	# Remove for mnist - reduced dimensions
+	#x = self.mp1(x)
 
 	for i in range(self.layers[0]):
 	    x = self.conv2[i](x)
@@ -145,8 +149,7 @@ class Resnet(nn.Module):
 	    x = self.conv5[i](x)
 
 	#Final average pooling
-	#x = F.avg_pool2d(x, kernel_size=7, padding=3)
-	#average pooling not needed for mnist due to side reduction
+	x = F.avg_pool2d(x, kernel_size=7, padding=3)
 
 	x = x.view(-1, 512)
 	x = self.fc(x)
