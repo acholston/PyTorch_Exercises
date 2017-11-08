@@ -1,4 +1,5 @@
-# Lab 12 RNN
+# Lab Exercise 13-1 - Implement NMT
+# Model structure follows from Neural Machine Translation by Jointly Learning to Align and Translate
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,9 +16,8 @@ y_data = [[0, 2, 6], [0, 2, 4], [0, 1, 5], [0, 1, 4], [0, 3, 5]]
 idx = ["el", "perro", "azul", "rojo", "gato", "amarillo", "cabello"]
 idy = ["the", "red", "blue", "yellow", "cat", "dog", "horse"]
 
+x_test = [0, 1, 2]
 #Test => 0, 1, 2 (The blue dog)
-# As we have one batch of samples, we will change them to variables only once
-
 
 num_cases = 5
 input_size = 7 
@@ -49,10 +49,14 @@ class EncoderRNN(nn.Module):
 	self.init_s = nn.Linear(hidden_size, hidden_size)
 
     def forward(self, x, h):
+	#Embed and processes all sequences
         x = self.emb(x)
 	x, h = self.gru(x, h)
 
+	#Generate input hidden state for decoder (from h1<-)
 	s = self.init_s(h[0][0]).view(-1, self.hidden_size)
+
+	#Concatenate hidden state for future use
 	h = h.transpose(0, 1).contiguous()
 	h = h.view(-1, self.hidden_size*2)
 
@@ -67,39 +71,56 @@ class DecoderRNN(nn.Module):
 	self.sequence_length = sequence_length
 	self.input_size = input_size
 
-	
+	#Weights for conversion of hidden states to energies
 	self.U = nn.Linear(hidden_size*2, hidden_size)
 	self.W = nn.Linear(hidden_size, hidden_size)
+
+	#Conversion of inputs to RNN
 	self.Uc = nn.Linear(hidden_size*2, hidden_size)
 	self.Wy = nn.Linear(hidden_size, hidden_size)
-	self.a = nn.Linear(self.hidden_size*2, self.hidden_size)
 
+	#Embedding/GRU
 	self.emb = nn.Embedding(self.input_size, embed_size)
 	self.gru = nn.GRU(self.hidden_size, hidden_size)
+
+	#Final class reduction
 	self.fc = nn.Linear(self.hidden_size, self.input_size)
 
+    #Performing attention
     def attn(self, s, h):
+	#Initiallize context vector to size of 2n
 	c = Variable(torch.zeros(self.hidden_size*2))
 	
+	#For each of the sequence
 	for i in range(self.sequence_length):
+	    #Energy values
 	    temp = F.tanh(self.U(h[i]) + self.W(s))
+
+	    #Calculate alpha
 	    temp = F.softmax(temp)
+
+	    #multiply - output 1x2*n (add for each sequence value)
 	    temp = torch.mul(temp.view(1, self.hidden_size), h[i].view(-1, self.hidden_size))
 	    c += temp.view(self.hidden_size*2)
 
 	return c
 
     def forward(self, y, h, s):
+	#Embedding
 	y = self.emb(y)
 
+	#Context Vector from attention
 	c = self.attn(s, h).view(-1, self.hidden_size*2)
 	
+	#Generate input to rnn (embedding and context)
 	y = self.Wy(y) + self.Uc(c)
 	y = y.view(1, 1, -1)
 	s = s.view(1, 1, -1)
 
+	#RNN
 	y, s = self.gru(y, s)
 
+	#Generate output words
 	y = y.squeeze(0)
 	y = self.fc(y)
 
@@ -116,40 +137,26 @@ dec = DecoderRNN(input_size, hidden_size, sequence_length, embed_size)
 # Set loss and optimizer function
 # CrossEntropyLoss = LogSoftmax + NLLLoss
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(enc.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(enc.parameters(), lr=0.01)
 
-# Train the model
-for epoch in range(10000):
-    inputs = Variable(torch.LongTensor([x_data[epoch%num_cases]]))
-    labels = Variable(torch.LongTensor(y_data[epoch%num_cases]))
-    enc_h = Variable(torch.zeros(2, sequence_length, hidden_size))
-    c = Variable(torch.zeros(1, hidden_size*2))
-    outputs = []
-    out, h, s = enc(inputs, enc_h)
-    for i in range(sequence_length):
-	if i > 0:
-	    _, idx = output.max(1)
-	    inp = Variable(torch.LongTensor(idx.data))
-	else:
-	    inp = Variable(torch.LongTensor([0]))
-	output, s = dec(inp, h, s)
-        outputs.append(output[0])
 
-    outputs = torch.stack(outputs)
-    optimizer.zero_grad()
-    loss = criterion(outputs, labels)
-    loss.backward()
-    optimizer.step()
-    _, idx = outputs.max(1)
-    idx = idx.data.numpy()
-    #result_str = [idx2char[c] for c in idx.squeeze()]
-    if epoch % 10 == 0:
-	inputs = Variable(torch.LongTensor([[0, 1, 2]]))
-        enc_h = Variable(torch.zeros(2, sequence_length, hidden_size))
-        cont = Variable(torch.zeros(1, hidden_size*2))
+#Training
+def train():
+    for i in range(len(x_data)):
+        inputs = Variable(torch.LongTensor([x_data[i]]))
+        labels = Variable(torch.LongTensor(y_data[i]))
+
+	#Generate initial hidden state
+        h = Variable(torch.zeros(2, sequence_length, hidden_size))
+
         outputs = []
-        out, h, s = enc(inputs, enc_h)
+
+	#Run encoder over whole sequence
+        out, h, s = enc(inputs, h)
+
+	#Perform over each sequence value
         for i in range(sequence_length):
+	    #If first sequence set output as SOS
 	    if i > 0:
 	        _, idx = output.max(1)
 	        inp = Variable(torch.LongTensor(idx.data))
@@ -160,10 +167,41 @@ for epoch in range(10000):
 
         outputs = torch.stack(outputs)
 
-        _, idx = outputs.max(1)
-        idx = idx.data.numpy()
-        result_str = [idy[c] for c in idx.squeeze()]
-	print(result_str)
-        #print("epoch: %d, loss: %1.3f" % (epoch, loss.data[0]))
-        #print("Predicted string: ", ''.join(result_str))
+	#Train
+        optimizer.zero_grad()
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+#Test
+def test():
+    inputs = Variable(torch.LongTensor([x_test]))
+    #Generate first hidden_state
+    h = Variable(torch.zeros(2, sequence_length, hidden_size))
+    outputs = []
+
+    #Run encoder over whole sequence
+    out, h, s = enc(inputs, h)
+
+    #perform over each value in sequence
+    for i in range(sequence_length):
+	if i > 0:
+	    _, idx = output.max(1)
+	    inp = Variable(torch.LongTensor(idx.data))
+	else:
+	    inp = Variable(torch.LongTensor([0]))
+	output, s = dec(inp, h, s)
+        outputs.append(output[0])
+
+    outputs = torch.stack(outputs)
+
+    _, idx = outputs.max(1)
+    idx = idx.data.numpy()
+    result_str = [idy[c] for c in idx.squeeze()]
+    print("Predicted string: ", ' '.join(result_str))
+
+
+for i in range(10):
+    train()
+    test()
 
