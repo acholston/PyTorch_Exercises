@@ -1,5 +1,4 @@
-#Exercise 11-2
-#Based on code from https://github.com/hunkim/PyTorchZeroToAll/blob/master
+#Implementation of DenseNet Exercise 11-3
 
 from __future__ import print_function
 import argparse
@@ -10,10 +9,11 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
+
 batch_size = 64
 
-#Define number of layers for each resnet block
-layers = [3, 4, 6, 3]
+#Define number of layers for each densenet block
+layers = [3, 4, 6, 4]
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--cuda', default=False)
@@ -39,130 +39,135 @@ test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
 					  shuffle=False)
 
 
-#Create a Block for two convolutional segments (where residual connections form)
+#Define the block to make up the dense connections
 class Block(nn.Module):
-    def __init__(self, numIn, numOut, stride=1):
+    def __init__(self, numIn, growth, downsample=None):
 	super(Block, self).__init__()
-	self.stride = stride
 
-	#only apply stride to first for reduction at start of each connection
-	#Conv and Batch_norm - no need for dropout
-	self.conv1 = nn.Conv2d(numIn, numOut, kernel_size=3, stride=stride, padding=1)
+	#Create bottleneck 1x1 convolution
+	numOut = growth*4
+	self.conv1 = nn.Conv2d(numIn, numOut, kernel_size=1)
 	self.b_norm1 = nn.BatchNorm2d(numOut)
-	self.conv2 = nn.Conv2d(numOut, numOut, kernel_size=3, padding=1)
-	self.b_norm2 = nn.BatchNorm2d(numOut)
 
-	#Define the connection of residual (unit or reduction) 
-	self.convr, self.b_normr = self.get_res(numIn, numOut)
-
+	#Perform convolution
+	self.conv2 = nn.Conv2d(numOut, growth, kernel_size=3, padding=1)
+	self.b_norm2 = nn.BatchNorm2d(growth)
 
     def forward(self, x):
-	#Define unit residual connection
-	r = x
-
-	#First Layer
-	x = self.conv1(x)
-	x = F.relu(self.b_norm1(x))
+	#Performs layer convolution
+	y = self.conv1(x)
+	y = F.relu(self.b_norm1(y))
 	
-	#Second Layer
-	x = self.conv2(x)	
-	x = self.b_norm2(x)
+	y = self.conv2(y)	
+	y = F.relu(self.b_norm2(y))
 
-	#If dimensionality changes perform reduction
-	if self.convr != None:
-	    r = self.b_normr(self.convr(r))
+	#Concat with previous connections to create dense structure
+	return torch.cat([x, y], 1)
+
+
+class Dense(nn.Module):
+    def __init__(self, layers, numIn, growth):
+	super(Dense, self).__init__()
+
+	self.layers = layers
+	n = numIn
+	self.conv = []
+
+	#Iterate over the number of dense connections
+	for i in range(layers):
+	    self.conv.append(Block(numIn, growth))
+	    numIn += growth
+	self.conv = nn.ModuleList(self.conv)
+		
+
+    def forward(self, x):
+	#Iterate dense connections
+	for i in range(self.layers):
+	    x = self.conv[i](x)
 	
-	#Add Residual
-	x += r
-
-	#Activation
-	x = F.relu(x)
 	return x
 
-    def get_res(self, numIn, numOut):
-	if numIn == numOut:
-	    return None, None
-	else:
-	    return nn.Conv2d(numIn, numOut, kernel_size=3, stride=self.stride, padding=1), nn.BatchNorm2d(numOut)
 
+class Transition(nn.Module):
+    def __init__(self, numIn):
+	super(Transition, self).__init__()
 
-
-class Resnet(nn.Module):
-    def __init__(self, bn, layers):
-	super(Resnet, self).__init__()
-	#Define residual/number of repeats
-	self.residual = None
-	self.layers = layers
-
-	#Initial convolution
-
-	#Stride changed for mnist - original resnet stride=2
-	#Input size 1 for MNIST, 3 for rgb (Imagenet, etc)
-	self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=1)
-	self.b_norm1 = nn.BatchNorm2d(64)
-	self.mp1 = nn.MaxPool2d(2)
-
-	#First Layers
-	self.conv2 = []
-	for i in range(layers[0]):
-	    self.conv2.append(Block(64, 64))
-	self.conv2 = nn.ModuleList(self.conv2)
-
-	#Second Layers
-	self.conv3 = []
-	self.conv3.append(Block(64, 128, stride=2))
-	for i in range(layers[1]-1):
-	    self.conv3.append(Block(128, 128))
-	self.conv3 = nn.ModuleList(self.conv3)
-
-	#Third Layers
-	self.conv4 = []
-	self.conv4.append(Block(128, 256, stride=2))
-	for i in range(layers[2]-1):
-	    self.conv4.append(Block(256, 256))
-	self.conv4 = nn.ModuleList(self.conv4)
-
-	#Fourth Layers
-	self.conv5 = []
-	self.conv5.append(Block(256, 512, stride=2))
-	for i in range(layers[3]-1):
-	    self.conv5.append(Block(512, 512))
-	self.conv5 = nn.ModuleList(self.conv5)
-
-	#Final
-	self.fc = nn.Linear(512, 10)
-	
+	#Perform 1x1 conv and avg
+	self.conv = nn.Conv2d(numIn, numIn, kernel_size=1)
+	self.b_norm = nn.BatchNorm2d(numIn)
 
     def forward(self, x):
+
+	#Transition
+	x = self.conv(x)
+	x = F.relu(self.b_norm(x))
+	x = F.avg_pool2d(x, kernel_size=3, stride=2, padding=1)
+
+	return x
+
+
+
+class Densenet(nn.Module):
+    def __init__(self, layers, growth=32):
+	super(Densenet, self).__init__()
+	self.layers = layers	
+
+	outNum = growth*2
+
+	#Input of size 3 for RGD (Imagenet) - Adapted for MNIST (Input=1)
+	self.conv1 = nn.Conv2d(1, outNum, kernel_size=7, stride=2, padding=3)
+	self.b_norm1 = nn.BatchNorm2d(outNum)
+	self.mp = nn.MaxPool2d(kernel_size=3, stride=2)
+
+	#Dense Layer 1
+	numIn = outNum
+	self.dense1 = Dense(layers[0], numIn, growth)
+	numIn += layers[0]*growth
+	self.trans1 = Transition(numIn)
+
+	#Dense layer 2
+	self.dense2 = Dense(layers[1], numIn, growth)
+	numIn += layers[1]*growth
+	self.trans2 = Transition(numIn)
+
+	#dense layer 3
+	self.dense3 = Dense(layers[2], numIn, growth)
+	numIn += layers[2]*growth
+	self.trans3 = Transition(numIn)
+
+	#Dense Layer 4
+	self.dense4 = Dense(layers[3], numIn, growth)
+ 	numIn += layers[3]*growth
+	
+	#FC
+	self.fc = nn.Linear(numIn, 10)	
+
+    def forward(self, x):
+	#Perform
 	x = self.conv1(x)
 	x = F.relu(self.b_norm1(x))
 	
-	# Remove for mnist - reduced dimensions
-	#x = self.mp1(x)
+	x = self.dense1(x)
+	x = self.trans1(x)
 
-	for i in range(self.layers[0]):
-	    x = self.conv2[i](x)
-	
-	for i in range(self.layers[1]):
-	    x = self.conv3[i](x)
+	x = self.dense2(x)
+	x = self.trans2(x)
 
-	for i in range(self.layers[2]):
-	    x = self.conv4[i](x)
+	x = self.dense3(x)
+	x = self.trans3(x)
 
-	for i in range(self.layers[3]):
-	    x = self.conv5[i](x)
+	x = self.dense4(x)
 
-	#Final average pooling
 	x = F.avg_pool2d(x, kernel_size=7, padding=3)
 
-	x = x.view(-1, 512)
+	x = x.view(-1, x.size(1))
 	x = self.fc(x)
-
-	return F.log_softmax(x)
-
 	
-#Initialize
-model = Resnet(64, layers)
+	return F.log_softmax(x)
+	
+	
+#init
+model = Densenet(layers)
 if args.cuda:
     model.cuda()
 
@@ -209,7 +214,7 @@ def test():
         100. * correct / len(test_loader.dataset)))
 
 
-for epoch in range(1, 2):
+for epoch in range(1, 10):
     train(epoch)
     test()
 
