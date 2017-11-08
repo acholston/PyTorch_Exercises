@@ -145,7 +145,8 @@ class Resnet(nn.Module):
 	    x = self.conv5[i](x)
 
 	#Final average pooling
-	x = F.avg_pool2d(x, kernel_size=7, padding=3)
+	#x = F.avg_pool2d(x, kernel_size=7, padding=3)
+	#average pooling not needed for mnist due to side reduction
 
 	x = x.view(-1, 512)
 	x = self.fc(x)
