@@ -6,8 +6,6 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 
-torch.manual_seed(777)  # reproducibility
-
 
 #Short Spanish Test Case
 x_data = [[0, 6, 2], [0, 4, 2], [0, 1, 3], [0, 4, 3], [0, 1, 5]]
@@ -102,7 +100,7 @@ class DecoderRNN(nn.Module):
 	
 	#Get alpha
 	alpha = F.softmax(energy)
-	alpha = alpha.view(-1, self.hidden_size)
+	alpha = alpha.transpose(0, 1).contiguous()
 	for i in range(self.sequence_length):
 	    #multiply - output 1x2*n (add for each sequence value)
 	    temp = torch.mul(alpha[i].view(1, self.hidden_size), h[i].view(-1, self.hidden_size))
@@ -142,7 +140,7 @@ dec = DecoderRNN(input_size, hidden_size, sequence_length, embed_size)
 # Set loss and optimizer function
 # CrossEntropyLoss = LogSoftmax + NLLLoss
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(enc.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(enc.parameters(), lr=0.005)
 
 
 #Training
@@ -206,7 +204,7 @@ def test():
     print("Predicted string: ", ' '.join(result_str))
 
 
-for i in range(10):
+for i in range(100):
     train()
     test()
 
