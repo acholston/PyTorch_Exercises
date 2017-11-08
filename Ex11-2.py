@@ -20,25 +20,6 @@ parser.add_argument('--cuda', default=False)
 args = parser.parse_args()
 
 
-#Run on MNIST to trial - Although ResNet designed for larger images
-train_dataset = datasets.MNIST(root='./data/',
-                               train=True,
-                               transform=transforms.ToTensor(),
-                               download=True)
-
-test_dataset = datasets.MNIST(root='./data/',
-                              train=False,
-                              transform=transforms.ToTensor())
-
-train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                           batch_size=batch_size,
-                                           shuffle=True)
-
-test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
-                                          batch_size=batch_size,
-					  shuffle=False)
-
-
 #Create a Block for two convolutional segments (where residual connections form)
 class Block(nn.Module):
     def __init__(self, numIn, numOut, stride=1):
@@ -96,9 +77,7 @@ class Resnet(nn.Module):
 
 	#Initial convolution
 
-	#Stride changed for mnist - original resnet stride=2
-	#Input size 1 for MNIST, 3 for rgb (Imagenet, etc)
-	self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=1)
+	self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=1)
 	self.b_norm1 = nn.BatchNorm2d(64)
 	self.mp1 = nn.MaxPool2d(2)
 
@@ -137,8 +116,7 @@ class Resnet(nn.Module):
 	x = self.conv1(x)
 	x = F.relu(self.b_norm1(x))
 	
-	# Remove for mnist - reduced dimensions
-	#x = self.mp1(x)
+	x = self.mp1(x)
 
 	for i in range(self.layers[0]):
 	    x = self.conv2[i](x)
@@ -169,7 +147,7 @@ if args.cuda:
 optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.5)
 
 
-def train(epoch):
+def train(epoch, train_loader):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
 	if args.cuda:
@@ -187,7 +165,7 @@ def train(epoch):
                 100. * batch_idx / len(train_loader), loss.data[0]))
 
 
-def test():
+def test(test_loader):
     model.eval()
     test_loss = 0
     correct = 0
@@ -210,7 +188,7 @@ def test():
 
 
 for epoch in range(1, 2):
-    train(epoch)
-    test()
+    train(epoch, train_loader)
+    test(test_loader)
 
 	

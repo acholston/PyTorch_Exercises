@@ -20,24 +20,6 @@ parser.add_argument('--cuda', default=False)
 args = parser.parse_args()
 
 
-#Run on MNIST to trial - Although ResNet designed for larger images
-train_dataset = datasets.MNIST(root='./data/',
-                               train=True,
-                               transform=transforms.ToTensor(),
-                               download=True)
-
-test_dataset = datasets.MNIST(root='./data/',
-                              train=False,
-                              transform=transforms.ToTensor())
-
-train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                           batch_size=batch_size,
-                                           shuffle=True)
-
-test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
-                                          batch_size=batch_size,
-					  shuffle=False)
-
 
 #Define the block to make up the dense connections
 class Block(nn.Module):
@@ -115,7 +97,7 @@ class Densenet(nn.Module):
 	outNum = growth*2
 
 	#Input of size 3 for RGD (Imagenet) - Adapted for MNIST (Input=1)
-	self.conv1 = nn.Conv2d(1, outNum, kernel_size=7, stride=2, padding=3)
+	self.conv1 = nn.Conv2d(3, outNum, kernel_size=7, stride=2, padding=3)
 	self.b_norm1 = nn.BatchNorm2d(outNum)
 	self.mp = nn.MaxPool2d(kernel_size=3, stride=2)
 
@@ -174,7 +156,7 @@ if args.cuda:
 optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.5)
 
 
-def train(epoch):
+def train(epoch, train_loader):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
 	if args.cuda:
@@ -192,7 +174,7 @@ def train(epoch):
                 100. * batch_idx / len(train_loader), loss.data[0]))
 
 
-def test():
+def test(test_loader):
     model.eval()
     test_loss = 0
     correct = 0
@@ -215,7 +197,7 @@ def test():
 
 
 for epoch in range(1, 10):
-    train(epoch)
-    test()
+    train(epoch, train_loader)
+    test(test_loader)
 
 	

@@ -14,25 +14,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--cuda', default=False)
 args = parser.parse_args()
 
-
-#Run on MNIST to trial - Although ResNet designed for larger images
-train_dataset = datasets.MNIST(root='./data/',
-                               train=True,
-                               transform=transforms.ToTensor(),
-                               download=True)
-
-test_dataset = datasets.MNIST(root='./data/',
-                              train=False,
-                              transform=transforms.ToTensor())
-
-train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                           batch_size=batch_size,
-                                           shuffle=True)
-
-test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
-                                          batch_size=batch_size,
-					  shuffle=False)
-
 #Due to too many convolutions and resulting batch norms - implement class
 class conv2d(nn.Module):
     def __init__(self, numIn, numOut, **kwargs):
@@ -165,22 +146,16 @@ class InceptionD(nn.Module):
 
 	#3x3 conv
 	self.branch3x3_1 = conv2d(in_channels, x3[0], kernel_size=1)
-	#Edited for MNIST
-	#self.branch3x3_2 = conv2d(x3[0], x3[1], kernel_size=3)
-	self.branch3x3_2 = conv2d(x3[0], x3[1], kernel_size=3, padding=1)
+	self.branch3x3_2 = conv2d(x3[0], x3[1], kernel_size=3)
 
 	#3x3 follow by 7x7 conv
 	self.branch3x3_7x7_1 = conv2d(in_channels, x7[0], kernel_size=1)
 	self.branch3x3_7x7_2 = conv2d(x7[0], x7[1], kernel_size=(1, 7), padding=(0, 3))
 	self.branch3x3_7x7_3 = conv2d(x7[1], x7[2], kernel_size=(7, 1), padding=(3, 0))
-	#Edited for MNIST
-	#self.branch3x3_7x7_4 = conv2d(x7[2], x7[3], kernel_size=3, stride=2)	
-	self.branch3x3_7x7_4 = conv2d(x7[2], x7[3], kernel_size=3, padding=1)
+	self.branch3x3_7x7_4 = conv2d(x7[2], x7[3], kernel_size=3, stride=2)	
 
 	#map pooling
-	#Edited for MNIST
-	#self.mp = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-	self.mp = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+	self.mp = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
     def forward(self, x):
 	branch3x3 = self.branch3x3_1(x)
@@ -245,14 +220,13 @@ class Net(nn.Module):
 	self.num_classes = num_classes
 	
 	#input of 1 for greyscale or 3 for RGB
-	#self.conv1a = conv2d(1, 32, kernel_size=3, stride=2)
-        self.conv1a = conv2d(1, 32, kernel_size=3)
+	self.conv1a = conv2d(3, 32, kernel_size=3, stride=2)
         self.conv1b = conv2d(32, 32, kernel_size=3)
         self.conv1c = conv2d(32, 64, kernel_size=3, padding=1)
 
         self.conv2a = conv2d(64, 80, kernel_size=3)
-        #self.conv2b = conv2d(80, 192, kernel_size=3, stride=2)
-        self.conv2b = conv2d(80, 192, kernel_size=3)
+        self.conv2b = conv2d(80, 192, kernel_size=3, stride=2)
+
 	self.conv2c = conv2d(192, 192, kernel_size=3)
 
 	#First inception Layers
@@ -279,9 +253,7 @@ class Net(nn.Module):
 
 	#Auxiliary - To bias majority of important gradients lower
         self.conv3a = conv2d(768, 128, kernel_size=1)
-	#Modified for MNIST
-        #self.conv3b = conv2d(128, 768, kernel_size=5)
-	self.conv3b = conv2d(128, 768, kernel_size=3)
+        self.conv3b = conv2d(128, 768, kernel_size=5)
 	self.fcA = nn.Linear(768, self.num_classes)
 	
 	#Output
@@ -316,9 +288,7 @@ class Net(nn.Module):
 
 	#Auxillery output
 	if aux:	   
-	    #Edited for MNIST
-	    #x = F.avg_pool2d(x, kernel_size=5, stride=3)
-	    x = F.avg_pool2d(x, kernel_size=5, stride=1, padding=2)
+	    x = F.avg_pool2d(x, kernel_size=5, stride=3)
             x = self.conv3a(x)
             x = self.conv3b(x)
 	    x = x.view(-1, 768)  # 1b the tensor
@@ -332,9 +302,7 @@ class Net(nn.Module):
 	x = self.inceptE1(x)
 	x = self.inceptE2(x)
 
-	#Edited for MNIST
-	#x = F.avg_pool2d(x, kernel_size=8)
-	x = F.avg_pool2d(x, kernel_size=3)
+	x = F.avg_pool2d(x, kernel_size=8)
 	x = x.view(-1, 2048)
 
 	#Seems wasteful
@@ -344,14 +312,14 @@ class Net(nn.Module):
 
 
 #Initialize
-model = Net(1000)
+model = Net(10)
 if args.cuda:
     model.cuda()
 
 optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.5)
 
 
-def train(epoch):
+def train(epoch, train_loader):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
 	if args.cuda:
@@ -378,7 +346,7 @@ def train(epoch):
                 100. * batch_idx / len(train_loader), loss.data[0]))
 
 
-def test():
+def test(test_loader):
     model.eval()
     test_loss = 0
     correct = 0
@@ -400,6 +368,6 @@ def test():
         100. * correct / len(test_loader.dataset)))
 
 
-for epoch in range(1, 2):
-    train(epoch)
-    test()
+for epoch in range(1, 5):
+    train(epoch, train_loader)
+    test(test_loader)
