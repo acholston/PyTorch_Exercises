@@ -9,6 +9,7 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 
 batch_size = 64
+train_size = 32
 #Number of module repeats
 layers = [4, 7, 3]
 num_classes = 10
@@ -32,7 +33,7 @@ train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                            shuffle=True)
 
 test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
-                                          batch_size=batch_size,
+                                          batch_size=train_size,
 					  shuffle=False)
 
 #Due to too many convolutions and resulting batch norms - implement class
@@ -339,6 +340,7 @@ def train(epoch):
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
+	
         if batch_idx % 10 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
@@ -358,7 +360,7 @@ def test():
         # sum up batch loss
         test_loss += F.nll_loss(output, target, size_average=False).data[0]
         # get the index of the max log-probability
-        pred = output.data.max(1, keepdim=True)[1]
+        pred = output.data.max(1)[1]
         correct += pred.eq(target.data.view_as(pred)).cpu().sum()
 
     test_loss /= len(test_loader.dataset)
