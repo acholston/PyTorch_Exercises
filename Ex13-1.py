@@ -90,17 +90,22 @@ class DecoderRNN(nn.Module):
     def attn(self, s, h):
 	#Initiallize context vector to size of 2n
 	c = Variable(torch.zeros(self.hidden_size*2))
-	
+
+	energy = []	
 	#For each of the sequence
 	for i in range(self.sequence_length):
 	    #Energy values
 	    temp = F.tanh(self.U(h[i]) + self.W(s))
-
-	    #Calculate alpha
-	    temp = F.softmax(temp)
-
+	    energy.append(temp)
+	energy = torch.stack(energy)
+	energy = energy.view(self.hidden_size, -1)
+	
+	#Get alpha
+	alpha = F.softmax(energy)
+	alpha = alpha.view(-1, self.hidden_size)
+	for i in range(self.sequence_length):
 	    #multiply - output 1x2*n (add for each sequence value)
-	    temp = torch.mul(temp.view(1, self.hidden_size), h[i].view(-1, self.hidden_size))
+	    temp = torch.mul(alpha[i].view(1, self.hidden_size), h[i].view(-1, self.hidden_size))
 	    c += temp.view(self.hidden_size*2)
 
 	return c
