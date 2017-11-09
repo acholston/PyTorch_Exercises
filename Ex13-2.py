@@ -300,6 +300,7 @@ def test():
     for data, target in test_loader:
 	if count > 5:
 	    break
+	count+=1
 	target = torch.cat([words_t, target.view(-1, 1)], 1)
 
 	if args.cuda:
