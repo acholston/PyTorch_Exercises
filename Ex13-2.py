@@ -42,7 +42,7 @@ num_classes = 13
 hidden_size = 200  # output from the LSTM. 5 to directly predict one-hot
 sequence_length = 4  
 encode_size = 200
-image_size = 10
+image_size = 512
 
 ids = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'This', 'is', 'a']
 
@@ -166,7 +166,6 @@ class Resnet(nn.Module):
 	x = F.avg_pool2d(x, kernel_size=3, padding=1)
 
 	x = x.view(-1, 512)
-	x = F.log_softmax(self.fc(x))
 
 	return x
 
@@ -196,7 +195,8 @@ class DecoderRNN(nn.Module):
 	self.gru = nn.GRU(hidden_size, hidden_size)
 
 	#Final linear layer
-	self.fc = nn.Linear(self.hidden_size, self.num_classes)
+	self.fc1 = nn.Linear(self.hidden_size, self.hidden_size)
+	self.fc2 = nn.Linear(self.hidden_size, self.num_classes)
 
     def forward(self, y, h, it):
 	#Decide whether CNN features of embedding are input
@@ -213,7 +213,9 @@ class DecoderRNN(nn.Module):
 	y = y.transpose(0, 1)
 	h = h.transpose(0, 1)
 
-	y = F.log_softmax(self.fc(y))
+	y = F.relu(self.fc1(h))
+
+	y = F.log_softmax(self.fc2(y))
 	
 	return y, h	
 
@@ -227,7 +229,7 @@ if args.cuda:
     dec.cuda()
 
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(list(model.parameters()) + list(dec.parameters()), lr=0.001)
+optimizer = torch.optim.Adam(list(model.parameters()) + list(dec.parameters()), lr=0.0005)
 
 ##############################
 #Generate test 'This is a'   #
@@ -283,10 +285,10 @@ def train(epoch):
 	loss = 0
 
 	for i in range(batch_size):
-            loss += (criterion(output[i], target[i]) + F.nll_loss(output[i], target[i]) )/batch_size
+            loss += (criterion(output[i], target[i]))/batch_size
         loss.backward()
         optimizer.step()
-        if batch_idx % 100 == 0:
+        if batch_idx % 10 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
@@ -333,6 +335,6 @@ def test():
 	print("Actual: " + str(target.data[0][3]))
 
 
-for epoch in range(1, 2):
+for epoch in range(1, 10):
     train(epoch)
     test()
