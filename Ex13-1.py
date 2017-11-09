@@ -144,7 +144,7 @@ dec = DecoderRNN(input_size, hidden_size, sequence_length, embed_size)
 # Set loss and optimizer function
 # CrossEntropyLoss = LogSoftmax + NLLLoss
 criterion = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(enc.parameters(), lr=0.005)
+optimizer = torch.optim.Adam(list(enc.parameters()) + list(dec.parameters()), lr=0.001)
 
 
 #Training
@@ -208,7 +208,28 @@ def test():
     print("Predicted string: ", ' '.join(result_str))
 
 
-for i in range(100):
+for i in range(50):
     train()
     test()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
