@@ -283,7 +283,7 @@ def train(epoch):
 	loss = 0
 
 	for i in range(batch_size):
-            loss += criterion(output[i], target[i]) + F.nll_loss(output[i], target[i]) 
+            loss += (criterion(output[i], target[i]) + F.nll_loss(output[i], target[i]) )/batch_size
         loss.backward()
         optimizer.step()
         if batch_idx % 100 == 0:
@@ -325,9 +325,6 @@ def test():
 	    outputs.append(y.transpose(0, 1)[0])
 	output = torch.stack(outputs).transpose(0, 1)
 
-        # sum up batch loss
-        for i in range(test_size):
-            test_loss += criterion(output[i], target[i]) + F.nll_loss(output[i], target[i])
         # get the index of the max log-probability
         _, idx = output[0].data.max(1)
 	result_str = [ids[c] for c in idx.squeeze()]
