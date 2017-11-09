@@ -290,9 +290,12 @@ def test():
     test_loss = 0
     correct = 0
     num = np.random.randint(0, len(test_loader))
-    data, target = test_loader[num]
+    data, target = test_dataset[num]
+    target_val = target
     #Perform CNN operation using RESNET
-
+    data = torch.Tensor(data)
+    target = torch.LongTensor(target)
+    data = data.unsqueeze(0)
     if args.cuda:
         data, target = Variable(data.cuda()), Variable(target.cuda())
     else:
@@ -301,10 +304,10 @@ def test():
 
     #Feed output as hidden state into text generator
     if args.cuda:
-	h = torch.zeros(batch_size, 1, hidden_size)
+	h = torch.zeros(1, 1, hidden_size)
 	h = Variable(h.cuda())
     else:
-	h = Variable(torch.zeros(batch_size, 1, hidden_size))	    
+	h = Variable(torch.zeros(1, 1, hidden_size))	    
     outputs = []
     #Iterate for length of sequence
     for i in range(sequence_length):
@@ -313,14 +316,15 @@ def test():
 	    y = Variable(idx.data.view(-1, 1).cuda())
 	else:
 	    y = output
+
 	y, h = dec(y, h, i)
 	outputs.append(y.transpose(0, 1)[0])
     output = torch.stack(outputs).transpose(0, 1)
 
-    _, idx = outputs.max(1)
+    _, idx = output.data.max(2)
     outcome = [ids[c] for c in idx.squeeze()]
     print("Predicted string: ", ' '.join(outcome))
-    print("Actual: ", ' '.join(target))
+    print("Actual: " + str(target_val))
 
 
 for epoch in range(1, 2):
