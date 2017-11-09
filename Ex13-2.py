@@ -9,6 +9,7 @@ import torch.optim as optim
 import numpy as np
 
 batch_size = 60
+test_size = 6
 
 #Define number of layers for each resnet block
 layers = [3, 4, 6, 4]
@@ -33,7 +34,7 @@ train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                            shuffle=True)
 
 test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
-                                          batch_size=batch_size,
+                                          batch_size=test_size,
 					  shuffle=False)
 
 
@@ -239,6 +240,13 @@ for i in range(batch_size):
     words_batch.append(words)
 words = torch.stack(words_batch)
 
+words_t = [10, 11, 12]
+words_t = torch.LongTensor(words_t)
+words_t_batch = []
+for i in range(test_size):
+    words_t_batch.append(words_t)
+words_t = torch.stack(words_t_batch)
+
 
 def train(epoch):
     model.train()
@@ -251,7 +259,6 @@ def train(epoch):
 	else:
             data, target = Variable(data), Variable(target)
         output = model(data)
-
 	#Feed output as hidden state into text generator
 	if args.cuda:
 	    h = torch.zeros(batch_size, 1, hidden_size)
@@ -289,42 +296,43 @@ def test():
     model.eval()
     test_loss = 0
     correct = 0
-    num = np.random.randint(0, len(test_loader))
-    data, target = test_dataset[num]
-    target_val = target
-    #Perform CNN operation using RESNET
-    data = torch.Tensor(data)
-    target = torch.LongTensor(target)
-    data = data.unsqueeze(0)
-    if args.cuda:
-        data, target = Variable(data.cuda()), Variable(target.cuda())
-    else:
-        data, target = Variable(data), Variable(target)
-    output = model(data)
+    count = 0
+    for data, target in test_loader:
+	if count > 5:
+	    break
+	target = torch.cat([words_t, target.view(-1, 1)], 1)
 
-    #Feed output as hidden state into text generator
-    if args.cuda:
-	h = torch.zeros(1, 1, hidden_size)
-	h = Variable(h.cuda())
-    else:
-	h = Variable(torch.zeros(1, 1, hidden_size))	    
-    outputs = []
-    #Iterate for length of sequence
-    for i in range(sequence_length):
-	if i > 0:
-	    _, idx = y.transpose(1, 2).max(1)
-	    y = Variable(idx.data.view(-1, 1).cuda())
+	if args.cuda:
+            data, target = Variable(data.cuda()), Variable(target.cuda())
 	else:
-	    y = output
+            data, target = Variable(data), Variable(target)
+        output = model(data)
+	#Feed output as hidden state into text generator
+	if args.cuda:
+	    h = torch.zeros(test_size, 1, hidden_size)
+	    h = Variable(h.cuda())
+	else:
+	    h = Variable(torch.zeros(test_size, 1, hidden_size))	    
+	outputs = []
+	#Iterate for length of sequence
+	for i in range(sequence_length):
+	    if i > 0:
+	        _, idx = y.transpose(1, 2).max(1)
+	 	y = Variable(idx.data.view(-1, 1).cuda())
+	    else:
+	        y = output
+	    y, h = dec(y, h, i)
+	    outputs.append(y.transpose(0, 1)[0])
+	output = torch.stack(outputs).transpose(0, 1)
 
-	y, h = dec(y, h, i)
-	outputs.append(y.transpose(0, 1)[0])
-    output = torch.stack(outputs).transpose(0, 1)
-
-    _, idx = output.data.max(2)
-    outcome = [ids[c] for c in idx.squeeze()]
-    print("Predicted string: ", ' '.join(outcome))
-    print("Actual: " + str(target_val))
+        # sum up batch loss
+        for i in range(test_size):
+            test_loss += criterion(output[i], target[i]) + F.nll_loss(output[i], target[i])
+        # get the index of the max log-probability
+        _, idx = output[0].data.max(1)
+	result_str = [ids[c] for c in idx.squeeze()]
+        print("Predicted string: ", ' '.join(result_str))
+	print("Actual: " + str(target.data[0][3]))
 
 
 for epoch in range(1, 2):
